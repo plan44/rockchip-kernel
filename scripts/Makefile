@@ -22,7 +22,7 @@ HOSTCFLAGS_asn1_compiler.o = -I$(srctree)/include
 HOSTCFLAGS_sign-file.o = $(CRYPTO_CFLAGS)
 HOSTLDLIBS_sign-file = $(CRYPTO_LIBS)
 HOSTCFLAGS_extract-cert.o = $(CRYPTO_CFLAGS)
-HOSTLDLIBS_extract-cert = $(CRYPTO_LIBS)
+HOSTLDLIBS_extract-cert = $(CRYPTO_LIBS) -pthread
 
 ifdef CONFIG_UNWINDER_ORC
 ifeq ($(ARCH),x86_64)
