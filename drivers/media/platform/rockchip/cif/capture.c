@@ -4197,6 +4197,9 @@ void rkcif_buf_queue(struct vb2_buffer *vb)
 	v4l2_dbg(3, rkcif_debug, &stream->cifdev->v4l2_dev,
 		 "stream[%d] buf queue, index: %d, dma_addr 0x%x\n",
 		 stream->id, vb->index, cifbuf->buff_addr[0]);
+	mutex_lock(&stream->mutex_lock);
+	stream->buf_cnt++;
+	mutex_unlock(&stream->mutex_lock);
 }
 
 void rkcif_free_rx_buf(struct rkcif_stream *stream, int buf_num)
@@ -4661,6 +4664,10 @@ void rkcif_do_stop_stream(struct rkcif_stream *stream,
 				vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_ERROR);
 			}
 		}
+		
+		mutex_lock(&stream->mutex_lock);
+		stream->buf_cnt = 0;
+		mutex_unlock(&stream->mutex_lock);
 		stream->lack_buf_cnt = 0;
 		stream->dma_en &= ~RKCIF_DMAEN_BY_VICAP;
 	}
@@ -5596,12 +5603,12 @@ static void rkcif_attach_sync_mode(struct rkcif_device *cifdev)
 		else
 			sync_cfg.group = 0;
 	}
+	cifdev->sync_cfg = sync_cfg;
 	if (sync_cfg.type == NO_SYNC_MODE ||
 	    hw->sync_config[sync_cfg.group].is_attach) {
 		mutex_unlock(&hw->dev_lock);
 		return;
 	}
-	cifdev->sync_cfg = sync_cfg;
 
 	sync_config = &hw->sync_config[sync_cfg.group];
 	memset(sync_config, 0, sizeof(struct rkcif_multi_sync_config));
@@ -6170,6 +6177,8 @@ void rkcif_stream_init(struct rkcif_device *dev, u32 id)
 	stream->buf_owner = 0;
 	stream->buf_replace_cnt = 0;
 	stream->is_stop_capture = false;
+	stream->buf_cnt = 0;
+	mutex_init(&stream->mutex_lock);
 }
 
 static int rkcif_fh_open(struct file *filp)
@@ -6862,6 +6871,9 @@ void rkcif_vb_done_oneframe(struct rkcif_stream *stream,
 	v4l2_dbg(2, rkcif_debug, &stream->cifdev->v4l2_dev,
 		 "stream[%d] vb done, index: %d, sequence %d\n", stream->id,
 		 vb_done->vb2_buf.index, vb_done->sequence);
+	mutex_lock(&stream->mutex_lock);
+	stream->buf_cnt--;
+	mutex_unlock(&stream->mutex_lock);
 }
 
 static void rkcif_tasklet_handle(unsigned long data)
@@ -9604,11 +9616,12 @@ static int rkcif_check_group_sync_state(struct rkcif_device *cif_dev)
 		return -EINVAL;
 
 	v4l2_dbg(3, rkcif_debug, &cif_dev->v4l2_dev,
-		 "sync code 0x%x, mask 0x%x, update 0x%x, cache 0x%x\n",
+		 "sync code 0x%x, mask 0x%x, update 0x%x, cache 0x%x, timestamp %llu\n",
 		 sync_config->sync_code,
 		 sync_config->sync_mask,
 		 sync_config->update_code,
-		 sync_config->update_cache);
+		 sync_config->update_cache,
+		 detect_stream->readout.fs_timestamp);
 
 	for (i = 0; i < sync_config->dev_cnt; i++) {
 		if (sync_config->mode == RKCIF_MASTER_MASTER) {
@@ -9966,11 +9979,20 @@ void rkcif_irq_pingpong_v1(struct rkcif_device *cif_dev)
 					is_update = true;
 				else
 					is_update = rkcif_check_buffer_prepare(stream);
+				v4l2_dbg(4, rkcif_debug, &cif_dev->v4l2_dev,
+					 "dma capture by vicap, is_updata %d, group mode %d, dma_en %d\n",
+					 is_update, cif_dev->sync_cfg.type, stream->dma_en);
 				if (is_update)
 					rkcif_update_stream(cif_dev, stream, mipi_id);
 			} else if (stream->dma_en & RKCIF_DMAEN_BY_ISP) {
+				v4l2_dbg(4, rkcif_debug, &cif_dev->v4l2_dev,
+					 "dma capture by isp, dma_en 0x%x\n",
+					 stream->dma_en);
 				rkcif_update_stream_toisp(cif_dev, stream, mipi_id);
 			} else if (stream->dma_en & RKCIF_DMAEN_BY_ROCKIT) {
+				v4l2_dbg(4, rkcif_debug, &cif_dev->v4l2_dev,
+					 "dma capture by rockit, dma_en 0x%x\n",
+					 stream->dma_en);
 				rkcif_update_stream_rockit(cif_dev, stream, mipi_id);
 			}
 
