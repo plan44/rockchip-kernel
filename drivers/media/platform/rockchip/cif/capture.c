@@ -4200,9 +4200,7 @@ void rkcif_buf_queue(struct vb2_buffer *vb)
 	v4l2_dbg(3, rkcif_debug, &stream->cifdev->v4l2_dev,
 		 "stream[%d] buf queue, index: %d, dma_addr 0x%x\n",
 		 stream->id, vb->index, cifbuf->buff_addr[0]);
-	mutex_lock(&stream->mutex_lock);
-	stream->buf_cnt++;
-	mutex_unlock(&stream->mutex_lock);
+	atomic_inc(&stream->buf_cnt);
 }
 
 void rkcif_free_rx_buf(struct rkcif_stream *stream, int buf_num)
@@ -4667,10 +4665,8 @@ void rkcif_do_stop_stream(struct rkcif_stream *stream,
 				vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_ERROR);
 			}
 		}
-		
-		mutex_lock(&stream->mutex_lock);
-		stream->buf_cnt = 0;
-		mutex_unlock(&stream->mutex_lock);
+
+		atomic_set(&stream->buf_cnt, 0);
 		stream->lack_buf_cnt = 0;
 		stream->dma_en &= ~RKCIF_DMAEN_BY_VICAP;
 	}
@@ -6191,8 +6187,7 @@ void rkcif_stream_init(struct rkcif_device *dev, u32 id)
 	stream->buf_owner = 0;
 	stream->buf_replace_cnt = 0;
 	stream->is_stop_capture = false;
-	stream->buf_cnt = 0;
-	mutex_init(&stream->mutex_lock);
+	atomic_set(&stream->buf_cnt, 0);
 }
 
 static int rkcif_fh_open(struct file *filp)
@@ -6885,9 +6880,7 @@ void rkcif_vb_done_oneframe(struct rkcif_stream *stream,
 	v4l2_dbg(2, rkcif_debug, &stream->cifdev->v4l2_dev,
 		 "stream[%d] vb done, index: %d, sequence %d\n", stream->id,
 		 vb_done->vb2_buf.index, vb_done->sequence);
-	mutex_lock(&stream->mutex_lock);
-	stream->buf_cnt--;
-	mutex_unlock(&stream->mutex_lock);
+	atomic_dec(&stream->buf_cnt);
 }
 
 static void rkcif_tasklet_handle(unsigned long data)
@@ -9628,9 +9621,6 @@ static int rkcif_check_group_sync_state(struct rkcif_device *cif_dev)
 
 	sync_config = &hw->sync_config[cif_dev->sync_cfg.group];
 	sync_config->sync_code |= BIT(cif_dev->csi_host_idx);
-	if (sync_config->sync_code != sync_config->sync_mask)
-		return -EINVAL;
-
 	v4l2_dbg(3, rkcif_debug, &cif_dev->v4l2_dev,
 		 "sync code 0x%x, mask 0x%x, update 0x%x, cache 0x%x, timestamp %llu\n",
 		 sync_config->sync_code,
@@ -9638,6 +9628,9 @@ static int rkcif_check_group_sync_state(struct rkcif_device *cif_dev)
 		 sync_config->update_code,
 		 sync_config->update_cache,
 		 detect_stream->readout.fs_timestamp);
+
+	if (sync_config->sync_code != sync_config->sync_mask)
+		return -EINVAL;
 
 	for (i = 0; i < sync_config->dev_cnt; i++) {
 		if (sync_config->mode == RKCIF_MASTER_MASTER) {
