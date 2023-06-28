@@ -579,7 +579,6 @@ struct dev_pm_info {
 	bool			direct_complete:1;	/* Owned by the PM core */
 	u32			driver_flags;
 	spinlock_t		lock;
-#ifdef CONFIG_PM_SLEEP
 	struct list_head	entry;
 	struct completion	completion;
 	struct wakeup_source	*wakeup;
@@ -588,10 +587,7 @@ struct dev_pm_info {
 	bool			no_pm_callbacks:1;	/* Owned by the PM core */
 	unsigned int		must_resume:1;	/* Owned by the PM core */
 	unsigned int		may_skip_resume:1;	/* Set by subsystems */
-#else
 	unsigned int		should_wakeup:1;
-#endif
-#ifdef CONFIG_PM
 	struct hrtimer		suspend_timer;
 	u64			timer_expires;
 	struct work_struct	work;
@@ -620,7 +616,6 @@ struct dev_pm_info {
 	u64			active_time;
 	u64			suspended_time;
 	u64			accounting_timestamp;
-#endif
 	struct pm_subsys_data	*subsys_data;  /* Owned by the subsystem. */
 	void (*set_latency_tolerance)(struct device *, s32);
 	struct dev_pm_qos	*qos;
