@@ -979,18 +979,14 @@ static int SC301IOT_read_reg(struct i2c_client *client, u16 reg, unsigned int le
 	return 0;
 }
 
-
-
-
 /* mode: 0 = lgain  1 = sgain */
-static int SC301IOT_set_gain_reg(struct SC301IOT *SC301IOT, u32 gain, int mode)
+static int SC301IOT_set_gain_reg(struct SC301IOT *SC301IOT, u32 gain_t, int mode)
 {
 	u8 ANA_Coarse_gain_reg = 0x00, DIG_Fine_gain_reg = 0x80;
-	u32 ANA_Coarse_gain = 1024, DIG_gain_reg = 0x00;
+	u32 ANA_Coarse_gain = 1024, DIG_gain_reg = 0x00, gain;
 	int ret = 0;
 
-
-	gain = gain * 16;
+	gain = gain_t * 16;
 	if (gain <= 1024)
 		gain = 1024;
 	else if (gain > SC301IOT_GAIN_MAX * 16)
@@ -1023,7 +1019,9 @@ static int SC301IOT_set_gain_reg(struct SC301IOT *SC301IOT, u32 gain, int mode)
 		gain = 1024;
 	else if (gain >= 2031)
 		gain = 2031;
-	DIG_Fine_gain_reg = gain/8;
+	DIG_Fine_gain_reg = gain / 8;
+	/* Align accuracy to 1 / 32 */
+	DIG_Fine_gain_reg = DIG_Fine_gain_reg / 4 * 4;
 
 	if (mode == SC301IOT_LGAIN) {
 		ret = SC301IOT_write_reg(SC301IOT->client,
@@ -1052,6 +1050,7 @@ static int SC301IOT_set_gain_reg(struct SC301IOT *SC301IOT, u32 gain, int mode)
 					 SC301IOT_REG_VALUE_08BIT,
 					 ANA_Coarse_gain_reg);
 	}
+	dev_dbg(&SC301IOT->client->dev, "total_gain: 0x%x, again: 0x%x, dgain: 0x%x, dgain_fine: 0x%x\n", gain_t, ANA_Coarse_gain_reg, DIG_gain_reg, DIG_Fine_gain_reg);
 	return ret;
 }
 
@@ -1117,7 +1116,6 @@ static int SC301IOT_set_hdrae(struct SC301IOT *SC301IOT,
 				 SC301IOT_REG_SEXPOSURE_L,
 				 SC301IOT_REG_VALUE_08BIT,
 				 SC301IOT_FETCH_EXP_L(s_exp_time));
-
 
 	ret |= SC301IOT_set_gain_reg(SC301IOT, l_a_gain, SC301IOT_LGAIN);
 	ret |= SC301IOT_set_gain_reg(SC301IOT, s_a_gain, SC301IOT_SGAIN);
@@ -1917,6 +1915,7 @@ static int SC301IOT_set_ctrl(struct v4l2_ctrl *ctrl)
 
 	switch (ctrl->id) {
 	case V4L2_CID_EXPOSURE:
+		dev_dbg(&client->dev, "set exporsure: 0x%x\n", ctrl->val);
 		if (SC301IOT->cur_mode->hdr_mode == NO_HDR) {
 			ctrl->val = ctrl->val;
 			/* 4 least significant bits of expsoure are fractional part */
