@@ -46,7 +46,7 @@
 				data-lanes = <1 2>;
 			};
 			csi_dphy_input5: endpoint@5 {
-				reg = <1>;
+				reg = <5>;
 				remote-endpoint = <&sc3338_out>;
 				data-lanes = <1 2>;
 			};
