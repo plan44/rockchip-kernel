@@ -57,13 +57,6 @@
 		#size-cells = <1>;
 		ranges;
 
-		linux,cma {
-			compatible = "shared-dma-pool";
-			inactive;
-			reusable;
-			size = <0x300000>;
-			linux,cma-default;
-		};
 
 		drm_logo: drm-logo@00000000 {
 			compatible = "rockchip,drm-logo";
