@@ -1977,22 +1977,24 @@ enum {
  * struct rkisp_thunderboot_resmem_head
  */
 struct rkisp_thunderboot_resmem_head {
-	u16 enable;
-	u16 complete;
-	u16 frm_total;
-	u16 hdr_mode;
-	u16 rtt_mode;
-	u16 width;
-	u16 height;
-	u16 camera_num;
-	u16 camera_index;
-	u16 md_flag;
+	__u16 enable;
+	__u16 complete;
+	__u16 frm_total;
+	__u16 hdr_mode;
+	__u16 rtt_mode;
+	__u16 width;
+	__u16 height;
+	__u16 camera_num;
+	__u16 camera_index;
+	__u16 md_flag;
 
-	u32 exp_time[3];
-	u32 exp_gain[3];
-	u32 exp_time_reg[3];
-	u32 exp_gain_reg[3];
-	u32 exp_isp_dgain[3];
+	__u32 exp_time[3];
+	__u32 exp_gain[3];
+	__u32 exp_time_reg[3];
+	__u32 exp_gain_reg[3];
+	__u32 exp_isp_dgain[3];
+	__u32 nr_buf_size;
+	__u32 share_mem_size;
 } __attribute__ ((packed));
 
 /**
