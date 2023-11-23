@@ -2024,6 +2024,8 @@ static void rga_cmd_to_rga2_cmd(struct rga_scheduler_t *scheduler,
 
 	req->palette_mode = req_rga->palette_mode;
 	req->yuv2rgb_mode = req_rga->yuv2rgb_mode;
+	if (req_rga->full_csc.flag & 0x1)
+		req->full_csc_en = 1;
 	req->endian_mode = req_rga->endian_mode;
 	req->rgb2yuv_mode = 0;
 
@@ -2321,6 +2323,7 @@ static int rga2_init_reg(struct rga_job *job)
 	struct rga2_req req;
 	int ret = 0;
 	struct rga_scheduler_t *scheduler = NULL;
+	ktime_t timestamp = ktime_get();
 
 	scheduler = job->scheduler;
 	if (unlikely(scheduler == NULL)) {
@@ -2331,7 +2334,24 @@ static int rga2_init_reg(struct rga_job *job)
 	memset(&req, 0x0, sizeof(req));
 
 	rga_cmd_to_rga2_cmd(scheduler, &job->rga_command_base, &req);
-	memcpy(&job->full_csc, &job->rga_command_base.full_csc, sizeof(job->full_csc));
+	if (req.full_csc_en) {
+		memcpy(&job->full_csc, &job->rga_command_base.full_csc, sizeof(job->full_csc));
+		if (job->rga_command_base.feature.full_csc_clip_en) {
+			memcpy(&job->full_csc_clip, &job->rga_command_base.full_csc_clip,
+			       sizeof(job->full_csc_clip));
+		} else {
+			job->full_csc_clip.y.max = 0xff;
+			job->full_csc_clip.y.min = 0x0;
+			job->full_csc_clip.uv.max = 0xff;
+			job->full_csc_clip.uv.min = 0x0;
+		}
+
+	} else {
+		job->full_csc_clip.y.max = 0xff;
+		job->full_csc_clip.y.min = 0x0;
+		job->full_csc_clip.uv.max = 0xff;
+		job->full_csc_clip.uv.min = 0x0;
+	}
 	memcpy(&job->pre_intr_info, &job->rga_command_base.pre_intr_info,
 	       sizeof(job->pre_intr_info));
 
@@ -2376,6 +2396,10 @@ static int rga2_init_reg(struct rga_job *job)
 		pr_err("gen reg info error\n");
 		return -EINVAL;
 	}
+
+	if (DEBUGGER_EN(TIME))
+		pr_info("request[%d], generate register cost time %lld us\n",
+			job->request_id, ktime_us_delta(ktime_get(), timestamp));
 
 	return ret;
 }
@@ -2482,19 +2506,13 @@ static void rga2_set_pre_intr_reg(struct rga_job *job, struct rga_scheduler_t *s
 
 static void rga2_set_reg_full_csc(struct rga_job *job, struct rga_scheduler_t *scheduler)
 {
-	uint8_t clip_y_max, clip_y_min;
-	uint8_t clip_uv_max, clip_uv_min;
-
-	clip_y_max = 0xff;
-	clip_y_min = 0x0;
-	clip_uv_max = 0xff;
-	clip_uv_min = 0;
-
 	/* full csc coefficient */
 	/* Y coefficient */
-	rga_write(job->full_csc.coe_y.r_v | (clip_y_max << 16) | (clip_y_min << 24),
+	rga_write(job->full_csc.coe_y.r_v |
+		  (job->full_csc_clip.y.max << 16) | (job->full_csc_clip.y.min << 24),
 		  RGA2_DST_CSC_00, scheduler);
-	rga_write(job->full_csc.coe_y.g_y | (clip_uv_max << 16) | (clip_uv_min << 24),
+	rga_write(job->full_csc.coe_y.g_y |
+		  (job->full_csc_clip.uv.max << 16) | (job->full_csc_clip.uv.min << 24),
 		  RGA2_DST_CSC_01, scheduler);
 	rga_write(job->full_csc.coe_y.b_u, RGA2_DST_CSC_02, scheduler);
 	rga_write(job->full_csc.coe_y.off, RGA2_DST_CSC_OFF0, scheduler);
@@ -2586,8 +2604,8 @@ static int rga2_set_reg(struct rga_job *job, struct rga_scheduler_t *scheduler)
 			rga_read(RGA2_INT, scheduler));
 
 	if (DEBUGGER_EN(TIME))
-		pr_info("set cmd use time = %lld\n",
-			ktime_us_delta(now, job->timestamp));
+		pr_info("request[%d], set register cost time %lld us\n",
+			job->request_id, ktime_us_delta(now, job->timestamp));
 
 	job->hw_running_time = now;
 	job->hw_recoder_time = now;
