@@ -25,6 +25,7 @@
 #include <media/v4l2-subdev.h>
 #include <linux/pinctrl/consumer.h>
 #include "../platform/rockchip/isp/rkisp_tb_helper.h"
+#include "cam-sleep-wakeup.h"
 
 #define DRIVER_VERSION			KERNEL_VERSION(0, 0x01, 0x00)
 
@@ -173,6 +174,7 @@ struct sc301iot {
 	bool			is_thunderboot;
 	bool			is_first_streamoff;
 	u32         sync_mode;
+	struct cam_sw_info *cam_sw_info;
 };
 
 #define to_sc301iot(sd) container_of(sd, struct sc301iot, subdev)
@@ -1491,6 +1493,8 @@ static long sc301iot_compat_ioctl32(struct v4l2_subdev *sd,
 		}
 		ret = sc301iot_ioctl(sd, cmd, hdrae);
 		kfree(hdrae);
+		memcpy(&sc301iot->cam_sw_info->hdr_ae, (struct preisp_hdrae_exp_s *)(arg),
+			  sizeof(struct preisp_hdrae_exp_s));
 		break;
 	case RKMODULE_SET_QUICK_STREAM:
 		if (copy_from_user(&stream, up, sizeof(u32)))
@@ -1724,6 +1728,10 @@ static int __sc301iot_power_on(struct sc301iot *sc301iot)
 		dev_err(dev, "Failed to enable xvclk\n");
 		goto disable_clk;
 	}
+
+	cam_sw_regulator_bulk_init(sc301iot->cam_sw_info,
+					SC301IOT_NUM_SUPPLIES, sc301iot->supplies);
+
 	if (sc301iot->is_thunderboot)
 		return 0;
 	if (!IS_ERR(sc301iot->reset_gpio))
@@ -1787,6 +1795,50 @@ static void __sc301iot_power_off(struct sc301iot *sc301iot)
 	regulator_bulk_disable(SC301IOT_NUM_SUPPLIES, sc301iot->supplies);
 }
 
+#if IS_REACHABLE(CONFIG_VIDEO_CAM_SLEEP_WAKEUP)
+static int sc301iot_resume(struct device *dev)
+{
+	int ret;
+	struct i2c_client *client = to_i2c_client(dev);
+	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+	struct sc301iot *sc301iot = to_sc301iot(sd);
+
+	cam_sw_prepare_wakeup(sc301iot->cam_sw_info, dev);
+
+	usleep_range(4000, 5000);
+	cam_sw_write_array(sc301iot->cam_sw_info);
+
+	if (__v4l2_ctrl_handler_setup(&sc301iot->ctrl_handler))
+		dev_err(dev, "__v4l2_ctrl_handler_setup fail!");
+
+	if (sc301iot->has_init_exp && sc301iot->cur_mode != NO_HDR) {	// hdr mode
+		ret = sc301iot_ioctl(&sc301iot->subdev, PREISP_CMD_SET_HDRAE_EXP,
+				&sc301iot->cam_sw_info->hdr_ae);
+		if (ret) {
+			dev_err(&sc301iot->client->dev, "set exp fail in hdr mode\n");
+			return ret;
+		}
+	}
+	return 0;
+}
+
+static int sc301iot_suspend(struct device *dev)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+	struct sc301iot *sc301iot = to_sc301iot(sd);
+
+	cam_sw_write_array_cb_init(sc301iot->cam_sw_info, client,
+		(void *)sc301iot->cur_mode->reg_list, (sensor_write_array)sc301iot_write_array);
+	cam_sw_prepare_sleep(sc301iot->cam_sw_info);
+
+	return 0;
+}
+#else
+#define sc301iot_resume NULL
+#define sc301iot_suspend NULL
+#endif
+
 static int sc301iot_runtime_resume(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
@@ -1847,6 +1899,7 @@ static int sc301iot_enum_frame_interval(struct v4l2_subdev *sd,
 static const struct dev_pm_ops sc301iot_pm_ops = {
 	SET_RUNTIME_PM_OPS(sc301iot_runtime_suspend,
 			   sc301iot_runtime_resume, NULL)
+	SET_LATE_SYSTEM_SLEEP_PM_OPS(sc301iot_suspend, sc301iot_resume)
 };
 
 #ifdef CONFIG_VIDEO_V4L2_SUBDEV_API
@@ -2241,7 +2294,12 @@ static int sc301iot_probe(struct i2c_client *client,
 	if (ret < 0)
 		goto err_power_off;
 #endif
-
+	if (!sc301iot->cam_sw_info) {
+		sc301iot->cam_sw_info = cam_sw_init();
+		cam_sw_clk_init(sc301iot->cam_sw_info, sc301iot->xvclk, SC301IOT_XVCLK_FREQ);
+		cam_sw_reset_pin_init(sc301iot->cam_sw_info, sc301iot->reset_gpio, 0);
+		cam_sw_pwdn_pin_init(sc301iot->cam_sw_info, sc301iot->pwdn_gpio, 1);
+	}
 	memset(facing, 0, sizeof(facing));
 	if (strcmp(sc301iot->module_facing, "back") == 0)
 		facing[0] = 'b';
@@ -2289,6 +2347,9 @@ static int sc301iot_remove(struct i2c_client *client)
 #if defined(CONFIG_MEDIA_CONTROLLER)
 	media_entity_cleanup(&sd->entity);
 #endif
+
+	cam_sw_deinit(sc301iot->cam_sw_info);
+
 	v4l2_ctrl_handler_free(&sc301iot->ctrl_handler);
 	mutex_destroy(&sc301iot->mutex);
 
