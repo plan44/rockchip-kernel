@@ -26,6 +26,7 @@
 #include <media/v4l2-subdev.h>
 #include <linux/pinctrl/consumer.h>
 #include "../platform/rockchip/isp/rkisp_tb_helper.h"
+#include "cam-sleep-wakeup.h"
 
 #define DRIVER_VERSION			KERNEL_VERSION(0, 0x01, 0x00)
 
@@ -179,6 +180,7 @@ struct sc230ai {
 	bool			is_thunderboot;
 	bool			is_first_streamoff;
 	struct preisp_hdrae_exp_s init_hdrae_exp;
+	struct cam_sw_info *cam_sw_info;
 };
 
 #define to_sc230ai(sd) container_of(sd, struct sc230ai, subdev)
@@ -970,6 +972,9 @@ static long sc230ai_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 		break;
 	case PREISP_CMD_SET_HDRAE_EXP:
 		sc230ai_set_hdrae(sc230ai, arg);
+		if (sc230ai->cam_sw_info)
+			memcpy(&sc230ai->cam_sw_info->hdr_ae, (struct preisp_hdrae_exp_s *)(arg),
+			  sizeof(struct preisp_hdrae_exp_s));
 		break;
 	case RKMODULE_SET_QUICK_STREAM:
 
@@ -1246,6 +1251,9 @@ static int __sc230ai_power_on(struct sc230ai *sc230ai)
 		dev_err(dev, "Failed to enable xvclk\n");
 		return ret;
 	}
+
+	cam_sw_regulator_bulk_init(sc230ai->cam_sw_info, SC230AI_NUM_SUPPLIES, sc230ai->supplies);
+
 	if (sc230ai->is_thunderboot)
 		return 0;
 
@@ -1309,6 +1317,50 @@ static void __sc230ai_power_off(struct sc230ai *sc230ai)
 	regulator_bulk_disable(SC230AI_NUM_SUPPLIES, sc230ai->supplies);
 }
 
+#if IS_REACHABLE(CONFIG_VIDEO_CAM_SLEEP_WAKEUP)
+static int sc230ai_resume(struct device *dev)
+{
+	int ret;
+	struct i2c_client *client = to_i2c_client(dev);
+	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+	struct sc230ai *sc230ai = to_sc230ai(sd);
+
+	cam_sw_prepare_wakeup(sc230ai->cam_sw_info, dev);
+
+	usleep_range(4000, 5000);
+	cam_sw_write_array(sc230ai->cam_sw_info);
+
+	if (__v4l2_ctrl_handler_setup(&sc230ai->ctrl_handler))
+		dev_err(dev, "__v4l2_ctrl_handler_setup fail!");
+
+	if (sc230ai->has_init_exp && sc230ai->cur_mode != NO_HDR) {	// hdr mode
+		ret = sc230ai_ioctl(&sc230ai->subdev, PREISP_CMD_SET_HDRAE_EXP,
+				&sc230ai->cam_sw_info->hdr_ae);
+		if (ret) {
+			dev_err(&sc230ai->client->dev, "set exp fail in hdr mode\n");
+			return ret;
+		}
+	}
+	return 0;
+}
+
+static int sc230ai_suspend(struct device *dev)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+	struct sc230ai *sc230ai = to_sc230ai(sd);
+
+	cam_sw_write_array_cb_init(sc230ai->cam_sw_info, client,
+		(void *)sc230ai->cur_mode->reg_list, (sensor_write_array)sc230ai_write_array);
+	cam_sw_prepare_sleep(sc230ai->cam_sw_info);
+
+	return 0;
+}
+#else
+#define sc230ai_resume NULL
+#define sc230ai_suspend NULL
+#endif
+
 static int sc230ai_runtime_resume(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
@@ -1369,6 +1421,7 @@ static int sc230ai_enum_frame_interval(struct v4l2_subdev *sd,
 static const struct dev_pm_ops sc230ai_pm_ops = {
 	SET_RUNTIME_PM_OPS(sc230ai_runtime_suspend,
 			   sc230ai_runtime_resume, NULL)
+	SET_LATE_SYSTEM_SLEEP_PM_OPS(sc230ai_suspend, sc230ai_resume)
 };
 
 #ifdef CONFIG_VIDEO_V4L2_SUBDEV_API
@@ -1770,6 +1823,13 @@ static int sc230ai_probe(struct i2c_client *client,
 		goto err_power_off;
 #endif
 
+	if (!sc230ai->cam_sw_info) {
+		sc230ai->cam_sw_info = cam_sw_init();
+		cam_sw_clk_init(sc230ai->cam_sw_info, sc230ai->xvclk, SC230AI_XVCLK_FREQ);
+		cam_sw_reset_pin_init(sc230ai->cam_sw_info, sc230ai->reset_gpio, 0);
+		cam_sw_pwdn_pin_init(sc230ai->cam_sw_info, sc230ai->pwdn_gpio, 1);
+	}
+
 	memset(facing, 0, sizeof(facing));
 	if (strcmp(sc230ai->module_facing, "back") == 0)
 		facing[0] = 'b';
@@ -1819,6 +1879,8 @@ static int sc230ai_remove(struct i2c_client *client)
 #endif
 	v4l2_ctrl_handler_free(&sc230ai->ctrl_handler);
 	mutex_destroy(&sc230ai->mutex);
+
+	cam_sw_deinit(sc230ai->cam_sw_info);
 
 	pm_runtime_disable(&client->dev);
 	if (!pm_runtime_status_suspended(&client->dev))
