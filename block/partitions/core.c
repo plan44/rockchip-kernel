@@ -10,6 +10,10 @@
 #include <linux/vmalloc.h>
 #include <linux/blktrace_api.h>
 #include <linux/raid/detect.h>
+#ifdef CONFIG_FIT_PARTITION
+#include <linux/root_dev.h>
+#endif
+
 #include "check.h"
 
 static int (*check_part[])(struct parsed_partitions *) = {
@@ -45,6 +49,9 @@ static int (*check_part[])(struct parsed_partitions *) = {
 #endif
 #ifdef CONFIG_EFI_PARTITION
 	efi_partition,		/* this must come before msdos */
+#endif
+#ifdef CONFIG_FIT_PARTITION
+	fit_partition,
 #endif
 #ifdef CONFIG_SGI_PARTITION
 	sgi_partition,
@@ -215,6 +222,18 @@ static ssize_t part_discard_alignment_show(struct device *dev,
 				p->start_sect));
 }
 
+static ssize_t part_name_show(struct device *dev,
+			      struct device_attribute *attr, char *buf)
+{
+	struct hd_struct *p = dev_to_part(dev);
+
+	if (p->info && p->info->volname)
+		return sprintf(buf, "%s\n", p->info->volname);
+
+	buf[0] = '\0';
+	return 0;
+}
+
 static DEVICE_ATTR(partition, 0444, part_partition_show, NULL);
 static DEVICE_ATTR(start, 0444, part_start_show, NULL);
 static DEVICE_ATTR(size, 0444, part_size_show, NULL);
@@ -223,6 +242,7 @@ static DEVICE_ATTR(alignment_offset, 0444, part_alignment_offset_show, NULL);
 static DEVICE_ATTR(discard_alignment, 0444, part_discard_alignment_show, NULL);
 static DEVICE_ATTR(stat, 0444, part_stat_show, NULL);
 static DEVICE_ATTR(inflight, 0444, part_inflight_show, NULL);
+static DEVICE_ATTR(name, 0444, part_name_show, NULL);
 #ifdef CONFIG_FAIL_MAKE_REQUEST
 static struct device_attribute dev_attr_fail =
 	__ATTR(make-it-fail, 0644, part_fail_show, part_fail_store);
@@ -237,6 +257,7 @@ static struct attribute *part_attrs[] = {
 	&dev_attr_discard_alignment.attr,
 	&dev_attr_stat.attr,
 	&dev_attr_inflight.attr,
+	&dev_attr_name.attr,
 #ifdef CONFIG_FAIL_MAKE_REQUEST
 	&dev_attr_fail.attr,
 #endif
@@ -700,6 +721,11 @@ static bool blk_add_partition(struct gendisk *disk, struct block_device *bdev,
 	if (IS_BUILTIN(CONFIG_BLK_DEV_MD) &&
 	    (state->parts[p].flags & ADDPART_FLAG_RAID))
 		md_autodetect_dev(part_to_dev(part)->devt);
+
+#ifdef CONFIG_FIT_PARTITION
+	if ((state->parts[p].flags & ADDPART_FLAG_ROOTDEV) && ROOT_DEV == 0)
+		ROOT_DEV = part_to_dev(part)->devt;
+#endif
 
 	return true;
 }
