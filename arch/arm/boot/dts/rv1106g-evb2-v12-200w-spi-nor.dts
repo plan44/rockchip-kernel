@@ -40,6 +40,7 @@
 
 &i2c4 {
 	rockchip,amp-shared;
+	/delete-node/ sc3338@30;
 
 	sc200ai: sc200ai@30 {
 		compatible = "smartsens,sc200ai";
