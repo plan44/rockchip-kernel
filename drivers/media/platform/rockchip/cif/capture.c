@@ -10500,7 +10500,7 @@ static void rkcif_get_resmem_head(struct rkcif_device *cif_dev)
 	int cam_idx = 0;
 	char cam_idx_str[3] = {0};
 
-	if (!cif_dev->is_thunderboot && !cif_dev->is_rtt_suspend)
+	if (!cif_dev->is_rtt_suspend)
 		return;
 	strscpy(cam_idx_str, cif_dev->terminal_sensor.sd->name + 1, 2);
 	cam_idx_str[2] = '\0';
@@ -10515,6 +10515,8 @@ static void rkcif_get_resmem_head(struct rkcif_device *cif_dev)
 		size = sizeof(struct rkisp32_thunderboot_resmem_head);
 		offset = size * cam_idx;
 	}
+	/* currently, thunderboot with mcu only run one camera */
+	offset = 0;
 
 	if (size && size < cif_dev->resmem_size) {
 		dma_sync_single_for_cpu(cif_dev->dev, cif_dev->resmem_addr + offset,
