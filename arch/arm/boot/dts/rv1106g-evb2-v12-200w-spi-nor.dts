@@ -9,12 +9,17 @@
 
 / {
 	model = "Rockchip RV1106G EVB2 V12 Board";
-	compatible = "rockchip,rv1106g-evb2-v12", "rockchip,rv1106";
+	compatible = "rockchip,rv1106g-evb2-v12-aov", "rockchip,rv1106";
 
 	chosen {
 		bootargs = "loglevel=0 rootfstype=erofs rootflags=dax console=ttyFIQ0 root=/dev/rd0 snd_soc_core.prealloc_buffer_size_kbytes=16 coherent_pool=0 driver_async_probe=dwmmc_rockchip";
 	};
 
+};
+
+&rkcif_mipi_lvds {
+	aov-reserved;
+	status = "okay";
 };
 
 &csi2_dphy0 {
