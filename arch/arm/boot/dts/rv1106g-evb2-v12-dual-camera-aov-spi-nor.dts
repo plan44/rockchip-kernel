@@ -13,6 +13,5 @@
 };
 
 &rkcif_mipi_lvds {
-	aov-reserved;
 	status = "okay";
 };
