@@ -682,7 +682,9 @@ static unsigned long kbase_devfreq_get_static_power(struct devfreq *devfreq,
 
 int kbase_devfreq_init(struct kbase_device *kbdev)
 {
+	#if IS_ENABLED(CONFIG_DEVFREQ_THERMAL)
 	struct devfreq_cooling_power *kbase_dcp = &kbdev->dfc_power;
+	#endif
 	struct device_node *np = kbdev->dev->of_node;
 	struct device_node *model_node;
 	struct devfreq_dev_profile *dp;
