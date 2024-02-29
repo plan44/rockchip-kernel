@@ -16,6 +16,7 @@
 #include <linux/devfreq.h>
 #include <linux/regulator/consumer.h>
 #include <linux/regulator/driver.h>
+#include <linux/of.h>
 #ifdef CONFIG_DEVFREQ_THERMAL
 #include <linux/devfreq_cooling.h>
 #endif
