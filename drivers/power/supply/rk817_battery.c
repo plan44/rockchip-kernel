@@ -3079,7 +3079,7 @@ static void rk817_battery_shutdown(struct platform_device *dev)
 {
 }
 
-static time64_t rk817_get_rtc_sec(void)
+static __maybe_unused time64_t rk817_get_rtc_sec(void)
 {
 	int err;
 	struct rtc_time tm;
