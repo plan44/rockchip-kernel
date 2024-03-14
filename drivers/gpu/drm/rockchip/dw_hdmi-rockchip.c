@@ -3794,6 +3794,7 @@ static int dw_hdmi_rockchip_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM_SLEEP
 static int dw_hdmi_rockchip_suspend(struct device *dev)
 {
 	struct rockchip_hdmi *hdmi = dev_get_drvdata(dev);
@@ -3868,6 +3869,7 @@ static const struct dev_pm_ops dw_hdmi_rockchip_pm = {
 	SET_SYSTEM_SLEEP_PM_OPS(dw_hdmi_rockchip_suspend,
 				dw_hdmi_rockchip_resume)
 };
+#endif
 
 struct platform_driver dw_hdmi_rockchip_pltfm_driver = {
 	.probe  = dw_hdmi_rockchip_probe,
@@ -3875,7 +3877,9 @@ struct platform_driver dw_hdmi_rockchip_pltfm_driver = {
 	.shutdown = dw_hdmi_rockchip_shutdown,
 	.driver = {
 		.name = "dwhdmi-rockchip",
+		#ifdef CONFIG_PM_SLEEP
 		.pm = &dw_hdmi_rockchip_pm,
+		#endif
 		.of_match_table = dw_hdmi_rockchip_dt_ids,
 	},
 };
