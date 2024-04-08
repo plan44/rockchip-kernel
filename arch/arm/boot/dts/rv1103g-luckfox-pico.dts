@@ -13,6 +13,9 @@
 	model = "Luckfox Pico";
 	compatible = "rockchip,rv1103g-38x38-ipc-v10", "rockchip,rv1103";
 
+	chosen {
+		bootargs = "earlycon=uart8250,mmio32,0xff4c0000 console=ttyS2,115200";
+	};
 
 	gpio4pa2:gpio4pa2 {
 		compatible = "regulator-fixed";
@@ -160,16 +163,24 @@
 };
 
 // /**********UART**********/
+&uart2 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart2m1_xfer>;
+};
+
 &uart3 {
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart3m1_xfer>;
 };
+
 &uart4 {
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart4m1_xfer>;
 };
+
 // &uart5 {
 // 	status = "okay";
 // 	pinctrl-names = "default";
