@@ -843,6 +843,8 @@ ssize_t __modver_version_show(struct module_attribute *mattr,
 	return scnprintf(buf, PAGE_SIZE, "%s\n", vattr->version);
 }
 
+EXPORT_SYMBOL(__modver_version_show);
+
 extern const struct module_version_attribute *__start___modver[];
 extern const struct module_version_attribute *__stop___modver[];
 
