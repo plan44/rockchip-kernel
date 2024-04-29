@@ -112,6 +112,12 @@
 // 	pinctrl-0 = <&uart1m1_xfer>;
 // };
 
+&uart2 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart2m1_xfer>;
+};
+
 &uart3 {
 	status = "okay";
 	pinctrl-names = "default";
