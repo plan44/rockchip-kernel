@@ -119,7 +119,7 @@ static int rockchip_p3phy_rk3568_init(struct rockchip_p3phy_priv *priv)
 		     (0x3 << 8) | (0x3 << (8 + 16))); //map to access sram
 	for (i = 0; i < ARRAY_SIZE(phy_fw); i++)
 		writel(phy_fw[i], priv->mmio + (i<<2));
-	pr_info("snps pcie3phy FW update! size %ld\n", ARRAY_SIZE(phy_fw));
+	pr_info("snps pcie3phy FW update! size %u\n", ARRAY_SIZE(phy_fw));
 
 	regmap_write(priv->phy_grf, GRF_PCIE30PHY_CON9,
 		     (0x0 << 8) | (0x3 << (8 + 16)));
